@@ -169,55 +169,6 @@ subroutine calc_ion_v(iBlock)
      VIParallel = min( UDotB + MaxVParallel, VIParallel)
      VIParallel = max( UDotB - MaxVParallel, VIParallel)
 
-     ! Let's calculate the divergence of the parallel flow here:
-
-     DivIVelocity(:,:,:,iBlock) = 0.0
-     do iDir = 1,3
-
-        ViDotB = VIParallel*BLocal(:,:,:,iDir)/&
-             B0(:,:,:,iMag_,iBlock)
-        
-        ! Calculate Gradient First:
-        call UAM_Gradient_GC(ViDotB, IVelGradient, iBlock)
-
-        ! Add to divergence:
-        DivIVelocity(1:nLons,1:nLats,1:nAlts,iBlock) = &
-             DivIVelocity(1:nLons,1:nLats,1:nAlts,iBlock) + &
-             IVelGradient(1:nLons,1:nLats,1:nAlts,iDir)
-
-        if (iDir == 2) then
-           ! Add to divergence for latitude:
-           do iLon = 1, nLons
-              do iLat = 1, nLats
-                 do iAlt = 1, nAlts
-                    TanLat = TanLatitude(iLat,iBlock)
-                    if (TanLat > 5.0) TanLat = 5.0
-                    if (TanLat < -5.0) TanLat = -5.0
-                    DivIVelocity(iLon,iLat,iAlt,iBlock) = &
-                         DivIVelocity(iLon,iLat,iAlt,iBlock) - &
-                         TanLat * ViDotB(iLon,iLat,iAlt) * &
-                         InvRadialDistance_GB(iLon,iLat,iAlt,iBlock)
-                 enddo
-              enddo
-           enddo
-        endif
-
-        if (iDir == 3) then
-           ! Add to divergence for radial:
-           do iLon = 1, nLons
-              do iLat = 1, nLats
-                 do iAlt = 1, nAlts
-                    DivIVelocity(iLon,iLat,iAlt,iBlock) = &
-                         DivIVelocity(iLon,iLat,iAlt,iBlock) + &
-                         2 * ViDotB(iLon,iLat,iAlt) * &
-                         InvRadialDistance_GB(iLon,iLat,iAlt,iBlock)
-                 enddo
-              enddo
-           enddo
-        endif
-
-     enddo
-
      ForceCrossB(:,:,:,iEast_) = &
           Force(:,:,:,iNorth_) * BLocal(:,:,:,iUp_) - &
           Force(:,:,:,iUp_)    * BLocal(:,:,:,iNorth_)

@@ -324,6 +324,8 @@ contains
     deallocate(PotentialY)
     deallocate(Velocity)
     deallocate(IVelocity)
+    deallocate(IVelocityPar)
+    deallocate(IVelocityPerp)
     deallocate(Emissions)
     deallocate(vEmissionRate)
     deallocate(PhotoElectronDensity)

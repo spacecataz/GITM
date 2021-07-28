@@ -18,6 +18,12 @@ subroutine advance_horizontal(iBlock)
 
   real :: MaxDiff
 
+  real :: DivIVelocityLocal(nLons, nLats, nAlts)
+  real :: Vi(nLons, nLats, nAlts)
+  real :: change(nLons, nLats, nAlts)
+  real :: iVelGradient(nLons, nLats, nAlts, 3)
+  real :: tanlat
+  
   real :: cp_C(1:nLons,1:nLats)
   real :: Rho_C(-1:nLons+2,-1:nLats+2)
   real :: Temp_C(-1:nLons+2,-1:nLats+2)
@@ -368,6 +374,89 @@ subroutine advance_horizontal(iBlock)
 
   end do
 
+  if (UseIonAdvection .and. UseImprovedIonAdvection) then
+
+     ! This is put here because the ion (parallel) velocity has
+     ! been message passed
+
+     ! Let's calculate the divergence of the parallel flow here:
+
+     DivIVelocityLocal = 0.0
+     do iDir = 1,3
+
+        if (NonMagnetic) then
+           Vi = iVelocity(:, :, :, iDir, iBlock)
+        else
+           Vi = iVelocityPar(:, :, :, iDir, iBlock)
+        endif
+        
+        ! Calculate Gradient First:
+        call UAM_Gradient(Vi, IVelGradient, iBlock)
+
+        ! Add to divergence:
+        DivIVelocityLocal = &
+             DivIVelocityLocal + &
+             IVelGradient(1:nLons,1:nLats,1:nAlts,iDir)
+
+        if (iDir == 2) then
+           ! Add to divergence for latitude:
+           do iLon = 1, nLons
+              do iLat = 1, nLats
+                 do iAlt = 1, nAlts
+                    TanLat = TanLatitude(iLat,iBlock)
+                    if (TanLat > 5.0) TanLat = 5.0
+                    if (TanLat < -5.0) TanLat = -5.0
+                    DivIVelocityLocal(iLon,iLat,iAlt) = &
+                         DivIVelocityLocal(iLon,iLat,iAlt) - &
+                         TanLat * Vi(iLon,iLat,iAlt) * &
+                         InvRadialDistance_GB(iLon,iLat,iAlt,iBlock)
+                 enddo
+              enddo
+           enddo
+        endif
+
+        if (iDir == 3) then
+           ! Add to divergence for radial:
+           do iLon = 1, nLons
+              do iLat = 1, nLats
+                 do iAlt = 1, nAlts
+                    DivIVelocityLocal(iLon,iLat,iAlt) = &
+                         DivIVelocityLocal(iLon,iLat,iAlt) + &
+                         2 * Vi(iLon,iLat,iAlt) * &
+                         InvRadialDistance_GB(iLon,iLat,iAlt,iBlock)
+                 enddo
+              enddo
+           enddo
+        endif
+
+     enddo
+
+     
+     ! New Source Term for the ion density:
+
+     do iIon = 1, nIonsAdvect
+
+        change = dt * DivIVelocityLocal
+
+        IDensityS(1:nLons,1:nLats,1:nAlts,iIon,iBlock) = &
+             IDensityS(1:nLons,1:nLats,1:nAlts,iIon,iBlock) / (1 + change)
+
+     enddo
+        
+        IDensityS(:,:,:,ie_,iBlock) = 0.0
+        do iIon = 1, nIons-1
+           IDensityS(:,:,:,ie_,iBlock) = &
+                IDensityS(:,:,:,ie_,iBlock) + &
+                IDensityS(:,:,:,iIon,iBlock)
+        enddo
+
+        if (DoCheckForNans) call check_for_nans_ions('After divergence')
+
+     endif
+
+
+
+  
   if (iDebugLevel > 2) &
        write(*,*) "===> advance_horizontal, MaxDiff, IVel, IDens, Dt : ", &
        MaxDiff, maxval(abs(IVel_CD)), &
